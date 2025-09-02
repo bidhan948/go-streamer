@@ -55,15 +55,29 @@ func (t *TCPTransport) startAcceptLoop() {
 		if err != nil {
 			log.Println("Error accepting connection", err)
 		}
+		fmt.Printf("NEW INCOMING CONNECTION : %+v /n", conn)
 		go t.handleConnection(conn)
+
 	}
 }
 
+type Temp struct{}
+
 func (t *TCPTransport) handleConnection(conn net.Conn) {
 	peer := NewTCPPeer(conn, true)
-	err := t.handshakeFunc(conn)
+	err := t.handshakeFunc(peer)
 	if err != nil {
 		log.Fatal("CANNOT SHAKE HANDS : ", err)
+		conn.Close()
+		return
 	}
-	fmt.Printf("NEW INCMING CONNECTION : %+v", peer)
+
+	msg := &Temp{}
+
+	for {
+		if err := t.decoder.decode(conn, msg); err != nil {
+			log.Fatal("TCP ERROR :", err)
+			continue
+		}
+	}
 }

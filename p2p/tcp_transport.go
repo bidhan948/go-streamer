@@ -15,8 +15,9 @@ type TCPPeer struct {
 type TCPTransportConfig struct {
 	ListenAddress string
 	HandshakeFunc handshakeFunc
-	Decoder       Decoder
+	Decoder       *DefaultDecoder
 }
+
 type TCPTransport struct {
 	TCPTransportConfig
 	listener net.Listener

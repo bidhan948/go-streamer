@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 )
 
 type TCPPeer struct {
@@ -16,25 +15,34 @@ type TCPTransportConfig struct {
 	ListenAddress string
 	HandshakeFunc handshakeFunc
 	Decoder       *DefaultDecoder
+	OnPeerConnect func(Peer) error
 }
 
 type TCPTransport struct {
 	TCPTransportConfig
 	listener net.Listener
-	mu       sync.RWMutex
-	peers    map[string]Peer
+	rpch     chan *RPC
 }
 
 func NewTCPTransport(config TCPTransportConfig) *TCPTransport {
 	return &TCPTransport{
 		TCPTransportConfig: config,
+		rpch:               make(chan *RPC),
 	}
 }
 
-func NewTCPPeer(conn net.Conn, outbond bool) *TCPPeer {
+func (p *TCPPeer) Close() error {
+	return p.conn.Close()
+}
+
+func (t *TCPTransport) Consume() <-chan *RPC {
+	return t.rpch
+}
+
+func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		conn:     conn,
-		outbound: outbond,
+		outbound: outbound,
 	}
 }
 
@@ -64,22 +72,36 @@ func (t *TCPTransport) startAcceptLoop() {
 }
 
 func (t *TCPTransport) handleConnection(conn net.Conn) {
+	var err error
+
+	defer func() {
+		fmt.Printf("CLOSING CONNECTION : %+v /n", conn)
+		conn.Close()
+	}()
+
 	peer := NewTCPPeer(conn, true)
-	err := t.HandshakeFunc(peer)
+	err = t.HandshakeFunc(peer)
 	if err != nil {
 		log.Fatal("CANNOT SHAKE HANDS : ", err)
-		conn.Close()
 		return
 	}
 
-	buff := make([]byte, 2000)
-	for {
-		n, err := conn.Read(buff)
+	if t.OnPeerConnect != nil {
+		if err := t.OnPeerConnect(peer); err != nil {
+			log.Println("OnPeerConnect error", err)
+			return
+		}
+	}
+	rpc := &RPC{}
 
+	for {
+		err := t.Decoder.Decode(conn, rpc)
 		if err != nil {
-			log.Fatal("Buffer Err ", err)
+			log.Println("Error decoding message", err)
+			continue
 		}
 
-		fmt.Printf("MESSAGE : %+v\n", buff[:n])
+		rpc.From = conn.RemoteAddr()
+		t.rpch <- rpc
 	}
 }

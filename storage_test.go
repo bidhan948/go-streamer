@@ -7,17 +7,22 @@ import (
 
 func TestPathTransformFunc(t *testing.T) {
 	keyName := "SomeRandomKey"
-	pathName := CASPathTransformFunc(keyName)
+	pathKey := CASPathTransformFunc(keyName)
 	expectedPath := "dc2a1/164e7/b8e5a/d09fb/8e12c/4040e/584a3/e5867/"
+	expectedOrginalPathName := "dc2a1164e7b8e5ad09fb8e12c4040e584a3e5867"
 
-	if pathName != expectedPath {
-		t.Fatalf("expected %s, got %s", expectedPath, pathName)
+	if pathKey.Pathname != expectedPath {
+		t.Fatalf("expected %s, got %s", expectedPath, pathKey.Pathname)
+	}
+
+	if pathKey.FileName != expectedOrginalPathName {
+		t.Fatalf("expected %s, got %s", expectedOrginalPathName, pathKey.FileName)
 	}
 }
 
 func TestStore(t *testing.T) {
 	config := StoreConfig{
-		PathTransformFunc: DefaultPathTransformFunc,
+		PathTransformFunc: CASPathTransformFunc,
 	}
 
 	s := NewStore(config)

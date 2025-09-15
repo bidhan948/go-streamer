@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-type PathTransformFunc func(string) string
+type PathTransformFunc func(string) PathKey
 
 type StoreConfig struct {
 	PathTransformFunc PathTransformFunc
@@ -19,19 +20,9 @@ type Store struct {
 	StoreConfig
 }
 
-func CASPathTransformFunc(key string) string {
-	hash := sha1.Sum([]byte(key))
-	hashStr := hex.EncodeToString(hash[:])
-
-	blockSize := 5
-	sliceLen := len(hashStr) / blockSize
-	paths := make([]string, sliceLen+1)
-	for i := 0; i < sliceLen; i++ {
-		from, to := i*blockSize, (i+1)*blockSize
-		paths[i] = hashStr[from:to]
-	}
-
-	return strings.Join(paths, "/")
+type PathKey struct {
+	Pathname string
+	FileName string
 }
 
 var DefaultPathTransformFunc = func(key string) string {
@@ -44,26 +35,74 @@ func NewStore(config StoreConfig) *Store {
 	}
 }
 
+func CASPathTransformFunc(key string) PathKey {
+	hash := sha1.Sum([]byte(key))
+	hashStr := hex.EncodeToString(hash[:])
+
+	blockSize := 5
+	sliceLen := len(hashStr) / blockSize
+	paths := make([]string, sliceLen+1)
+	for i := 0; i < sliceLen; i++ {
+		from, to := i*blockSize, (i+1)*blockSize
+		paths[i] = hashStr[from:to]
+	}
+
+	return PathKey{
+		Pathname: strings.Join(paths, "/"),
+		FileName: hashStr,
+	}
+}
+
+func (p PathKey) FilePath() string {
+	return fmt.Sprintf("%s/%s", p.Pathname, p.FileName)
+}
+
 func (s *Store) writeStream(key string, r io.Reader) error {
 	path := s.PathTransformFunc(key)
-	if err := os.MkdirAll(path, os.ModePerm); err != nil {
+	if err := os.MkdirAll(path.Pathname, os.ModePerm); err != nil {
 		fmt.Println("error creating directory", err)
 		return err
 	}
 
-	filename := "some_random"
-	fullPathAndFilename := path + "/" + filename
+	fullPathAndFilename := path.FilePath()
+
 	f, err := os.Create(fullPathAndFilename)
 
 	if err != nil {
 		fmt.Println("error opening file", err)
 		return err
 	}
+
 	n, err := io.Copy(f, r)
 	if err != nil {
 		fmt.Println("error writing to file", err)
 		return err
 	}
+
 	fmt.Println("wrote", n, "bytes to", fullPathAndFilename)
 	return nil
+}
+
+func (s *Store) readStream(key string) (io.ReadCloser, error) {
+	pathKey := s.PathTransformFunc(key)
+	return os.Open(pathKey.FilePath())
+}
+
+func (s *Store) Read(key string) (io.Reader, error) {
+	f, err := s.readStream(key)
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	buff := new(bytes.Buffer)
+
+	_, err = io.Copy(buff, f)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buff, nil
 }

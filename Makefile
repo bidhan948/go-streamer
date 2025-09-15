@@ -1,4 +1,4 @@
-.PHONY: build run run-bin clean
+.PHONY: build run run-bin clean test
 
 build:
 	mkdir -p bin
@@ -14,3 +14,6 @@ run-bin: build
 clean:
 	go clean
 	rm -f bin/go-streamer
+
+test:
+	go test ./...

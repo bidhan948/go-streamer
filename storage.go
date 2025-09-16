@@ -6,13 +6,18 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
+	"log"
 	"os"
 	"strings"
 )
 
+const defaultDirName = "ggnetwork"
+
 type PathTransformFunc func(string) PathKey
 
 type StoreConfig struct {
+	Root              string
 	PathTransformFunc PathTransformFunc
 }
 
@@ -25,14 +30,49 @@ type PathKey struct {
 	FileName string
 }
 
-var DefaultPathTransformFunc = func(key string) string {
-	return key
+var DefaultPathTransformFunc = func(key string) PathKey {
+	return PathKey{
+		Pathname: key,
+		FileName: key,
+	}
 }
 
 func NewStore(config StoreConfig) *Store {
+	if config.PathTransformFunc == nil {
+		config.PathTransformFunc = DefaultPathTransformFunc
+	}
+
+	if len(config.Root) == 0 {
+		config.Root = defaultDirName
+	}
 	return &Store{
 		StoreConfig: config,
 	}
+}
+
+func (p PathKey) FirstPathName() string {
+	path := strings.Split(p.Pathname, "/")
+
+	if len(path) == 0 {
+		return ""
+	}
+
+	return path[0]
+}
+
+func (s *Store) Has(key string) bool {
+	pathKey := s.PathTransformFunc(key)
+	_, err := os.Stat(pathKey.FilePath())
+
+	return err != fs.ErrNotExist
+}
+
+func (s *Store) Delete(key string) error {
+	pathKey := s.PathTransformFunc(key)
+	defer func() {
+		log.Printf("deleted %s from disk", pathKey.FileName)
+	}()
+	return os.RemoveAll(pathKey.FirstPathName())
 }
 
 func CASPathTransformFunc(key string) PathKey {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"testing"
 )
@@ -22,39 +23,59 @@ func TestPathTransformFunc(t *testing.T) {
 }
 
 func TestStore(t *testing.T) {
+	s := newStore()
+
+	defer breakDown(t, s)
+
+	for i := 0; i < 50; i++ {
+		key := fmt.Sprintf("testing_key_%d", i)
+
+		data := []byte("some data to write to file")
+
+		err := s.writeStream(key, bytes.NewReader(data))
+
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		hasKey := s.Has(key)
+
+		if !hasKey {
+			t.Errorf("Expected To Have Key %s ", key)
+		}
+
+		r, err := s.Read(key)
+
+		if err != nil {
+			t.Error(err)
+		}
+
+		b, _ := io.ReadAll(r)
+
+		if string(b) != string(data) {
+			t.Errorf("Expetced %s GOT %s", b, data)
+		}
+
+		if err := s.Delete(key); err != nil {
+			t.Error(err)
+		}
+
+		if hasKey := s.Has(key); hasKey {
+			t.Errorf("This Key shouldn't exist %s ", key)
+		}
+	}
+}
+
+func newStore() *Store {
 	config := StoreConfig{
 		PathTransformFunc: CASPathTransformFunc,
 	}
 
-	key := "testdir"
+	return NewStore(config)
+}
 
-	s := NewStore(config)
-
-	data := []byte("some data to write to file")
-
-	err := s.writeStream(key, bytes.NewReader(data))
-
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	hasKey := s.Has(key)
-
-	if !hasKey {
-		t.Errorf("Expected To Have Key %s ", key)
-	}
-
-	r, err := s.Read(key)
-
-	if err != nil {
+func breakDown(t *testing.T, s *Store) {
+	if err := s.clearAll(); err != nil {
 		t.Error(err)
 	}
-
-	b, _ := io.ReadAll(r)
-
-	if string(b) != string(data) {
-		t.Errorf("Expetced %s GOT %s", b, data)
-	}
-
-	s.Delete(key)
 }

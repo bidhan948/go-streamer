@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"os"
 	"strings"
@@ -37,6 +37,10 @@ var DefaultPathTransformFunc = func(key string) PathKey {
 	}
 }
 
+func (s *Store) clearAll() error {
+	return os.RemoveAll(s.Root)
+}
+
 func NewStore(config StoreConfig) *Store {
 	if config.PathTransformFunc == nil {
 		config.PathTransformFunc = DefaultPathTransformFunc
@@ -65,7 +69,7 @@ func (s *Store) Has(key string) bool {
 	filePathWithRoot := fmt.Sprintf("%s/%s", s.Root, pathKey.FilePath())
 	_, err := os.Stat(filePathWithRoot)
 
-	return err != fs.ErrNotExist
+	return !errors.Is(err, os.ErrNotExist)
 }
 
 func (s *Store) Delete(key string) error {
@@ -97,6 +101,10 @@ func CASPathTransformFunc(key string) PathKey {
 
 func (p PathKey) FilePath() string {
 	return fmt.Sprintf("%s/%s", p.Pathname, p.FileName)
+}
+
+func (s *Store) Write(key string, r io.Reader) error {
+	return s.writeStream(key, r)
 }
 
 func (s *Store) writeStream(key string, r io.Reader) error {

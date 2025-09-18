@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -25,13 +26,35 @@ func TestStore(t *testing.T) {
 		PathTransformFunc: CASPathTransformFunc,
 	}
 
+	key := "testdir"
+
 	s := NewStore(config)
 
-	data := bytes.NewReader([]byte("some data to write to file"))
+	data := []byte("some data to write to file")
 
-	err := s.writeStream("testdir", data)
+	err := s.writeStream(key, bytes.NewReader(data))
 
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+
+	hasKey := s.Has(key)
+
+	if !hasKey {
+		t.Errorf("Expected To Have Key %s ", key)
+	}
+
+	r, err := s.Read(key)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	b, _ := io.ReadAll(r)
+
+	if string(b) != string(data) {
+		t.Errorf("Expetced %s GOT %s", b, data)
+	}
+
+	s.Delete(key)
 }
